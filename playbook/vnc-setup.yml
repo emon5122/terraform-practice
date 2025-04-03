@@ -1,0 +1,108 @@
+---
+- name: Setup VNC Server
+  hosts: all
+  become: yes
+  vars:
+    vnc_user: ubuntu
+    vnc_home: "/home/ubuntu"
+    vnc_password: "Password1234"
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - xfce4
+          - xfce4-goodies
+          - tigervnc-standalone-server
+          - tigervnc-common
+        state: present
+
+    - name: Ensure .vnc directory exists
+      file:
+        path: "{{ vnc_home }}/.vnc"
+        state: directory
+        mode: "0755"
+        owner: "{{ vnc_user }}"
+        group: "{{ vnc_user }}"
+
+    - name: Set VNC password
+      shell: |
+        mkdir -p {{ vnc_home }}/.vnc
+        echo "{{ vnc_password }}" | vncpasswd -f > {{ vnc_home }}/.vnc/passwd
+      args:
+        creates: "{{ vnc_home }}/.vnc/passwd"
+      become_user: "{{ vnc_user }}"
+
+    - name: Set correct permissions for VNC password file
+      file:
+        path: "{{ vnc_home }}/.vnc/passwd"
+        owner: "{{ vnc_user }}"
+        group: "{{ vnc_user }}"
+        mode: "0600"
+
+    - name: Configure VNC xstartup
+      copy:
+        dest: "{{ vnc_home }}/.vnc/xstartup"
+        owner: "{{ vnc_user }}"
+        group: "{{ vnc_user }}"
+        mode: "0755"
+        content: |
+          #!/bin/bash
+          unset SESSION_MANAGER
+          unset DBUS_SESSION_BUS_ADDRESS
+          exec startxfce4
+
+    - name: Configure VNC systemd service
+      copy:
+        dest: /etc/systemd/system/vncserver@.service
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=TigerVNC Server
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ vnc_user }}
+          PAMName=login
+          PIDFile={{ vnc_home }}/.vnc/%H:%i.pid
+          ExecStartPre=-/usr/bin/vncserver -kill :%i
+          ExecStart=/usr/bin/vncserver :%i -localhost no -fg
+          ExecStop=/usr/bin/vncserver -kill :%i
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd daemon
+      systemd:
+        daemon_reload: yes
+
+    - name: Stop any existing VNC sessions
+      shell: |
+        pkill Xtigervnc || true
+      ignore_errors: yes
+
+    - name: Clean up existing VNC files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - /tmp/.X1*
+        - /tmp/.X11-unix/X1
+        - "{{ vnc_home }}/.vnc/*.pid"
+        - "{{ vnc_home }}/.vnc/*.log"
+      ignore_errors: yes
+
+    - name: Enable VNC service
+      systemd:
+        name: vncserver@1.service
+        enabled: yes
+
+    - name: Start VNC service
+      systemd:
+        name: vncserver@1.service
+        state: started

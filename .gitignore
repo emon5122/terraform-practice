@@ -1,0 +1,26 @@
+# Terraform state files
+*.tfstate
+*.tfstate.backup
+
+# Terraform crash log files
+crash.log
+
+# Ignore CLI credentials and local environment overrides
+.terraformrc
+terraform.tfvars
+terraform.tfvars.json
+override.tf
+override.tf.json
+
+# Ignore Terraform working directory
+.terraform/
+
+# Ignore generated SSH keys (if applicable)
+*.pem
+*.key
+*.key.pub
+
+# Ignore logs and debug files
+*.log
+*.tfplan
+*.backup
